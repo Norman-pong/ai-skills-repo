@@ -1,0 +1,16 @@
+.DS_Store
+.idea/
+.vscode/
+
+# Rust
+target/
+**/target/
+Cargo.lock
+
+# Logs
+*.log
+
+# Environment
+.env
+.env.*
+
