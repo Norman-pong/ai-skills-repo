@@ -41,6 +41,7 @@ Not-tested: <known gaps in verification>
 5. **`Constraint:` captures external forces.** API limitations, policy requirements, upstream bugs — things not visible in the code.
 6. **`Not-tested:` is honest.** Declaring known verification gaps is more valuable than pretending everything is covered.
 7. **All trailers use git-native trailer format** (key-value after a blank line). No custom parsing required.
+8. Use chinese to comment trailers.
 
 ### Example
 
