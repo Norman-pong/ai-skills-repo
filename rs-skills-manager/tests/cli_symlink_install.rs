@@ -40,10 +40,14 @@ fn make_repo_root_with_skills(root: &Path, skill: &str) -> std::path::PathBuf {
 }
 
 fn run_cli(home: &Path, repo_root: &Path, args: &[&str]) -> std::process::Output {
+    run_cli_in_dir(home, repo_root, args)
+}
+
+fn run_cli_in_dir(home: &Path, cwd: &Path, args: &[&str]) -> std::process::Output {
     Command::new(bin_path())
         .args(args)
         .env("HOME", home)
-        .current_dir(repo_root)
+        .current_dir(cwd)
         .output()
         .unwrap()
 }
@@ -82,6 +86,67 @@ fn cli_installs_symlink_into_target_dir_and_is_idempotent() {
     );
     let stdout2 = String::from_utf8_lossy(&out2.stdout);
     assert!(stdout2.contains("skipped"));
+}
+
+#[test]
+fn cli_can_run_from_skills_dir_using_skill_name() {
+    let home = setup_temp_home();
+    let tmp = tempfile::tempdir().unwrap();
+    let skill = "software-engineer";
+    let repo_root = make_repo_root_with_skills(tmp.path(), skill);
+    let target_dir = home.path().join("targets/skills");
+
+    write_config(home.path(), &target_dir);
+
+    let out = run_cli_in_dir(
+        home.path(),
+        &repo_root.join("skills"),
+        &["-i", skill, "-o", "kimi"],
+    );
+    assert!(
+        out.status.success(),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let link_path = target_dir.join(skill);
+    let actual = std::fs::canonicalize(&link_path).unwrap();
+    let expected = std::fs::canonicalize(repo_root.join("skills").join(skill)).unwrap();
+    assert_eq!(actual, expected);
+}
+
+#[test]
+fn cli_accepts_skill_path_without_repo_skills_dir_in_cwd() {
+    let home = setup_temp_home();
+    let tmp = tempfile::tempdir().unwrap();
+    let skill = "software-engineer";
+    let repo_root = make_repo_root_with_skills(tmp.path(), skill);
+    let target_dir = home.path().join("targets/skills");
+
+    write_config(home.path(), &target_dir);
+
+    let other_cwd = tempfile::tempdir().unwrap();
+    let skill_dir = repo_root.join("skills").join(skill);
+    let skill_dir = std::fs::canonicalize(&skill_dir).unwrap();
+
+    let out = Command::new(bin_path())
+        .env("HOME", home.path())
+        .current_dir(other_cwd.path())
+        .args(["-i", skill_dir.to_str().unwrap(), "-o", "kimi"])
+        .output()
+        .unwrap();
+
+    assert!(
+        out.status.success(),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let link_path = target_dir.join(skill);
+    let actual = std::fs::canonicalize(&link_path).unwrap();
+    assert_eq!(actual, skill_dir);
 }
 
 #[test]

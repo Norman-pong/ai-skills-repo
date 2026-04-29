@@ -25,8 +25,8 @@ struct Cli {
 
     #[arg(
         short = 'i',
-        value_name = "SKILL",
-        help = "Skill name to install (repeatable). Omit to install all discovered skills"
+        value_name = "SKILL|PATH",
+        help = "Skill name or path to a skill directory (repeatable). Omit to install all discovered skills"
     )]
     skills: Vec<String>,
 
@@ -68,17 +68,16 @@ fn run(cli: Cli) -> Result<(), AppError> {
 
     let config = config::load_default_config()?;
 
-    let repo_skills_dir = cwd.join("skills");
-    let repo_skills_dir =
-        std::fs::canonicalize(&repo_skills_dir).map_err(|e| AppError::RepoSkillsDirInvalid {
-            path: repo_skills_dir.clone(),
-            source: e,
-        })?;
-
     let selected_skills = if cli.skills.is_empty() {
+        let repo_skills_dir = skills::detect_repo_skills_dir(&cwd)?;
         skills::discover_skills(&repo_skills_dir)?
     } else {
-        skills::validate_skills(&repo_skills_dir, &cli.skills)?
+        let repo_skills_dir = if skills::requires_repo_skills_dir(&cli.skills) {
+            Some(skills::detect_repo_skills_dir(&cwd)?)
+        } else {
+            None
+        };
+        skills::resolve_requested_skills(repo_skills_dir.as_deref(), &cwd, &cli.skills)?
     };
 
     let platform = cli.platform.unwrap_or_else(|| "all".to_string());
@@ -110,21 +109,13 @@ fn run(cli: Cli) -> Result<(), AppError> {
             })?;
 
             for skill in &selected_skills {
-                let link_path = target_dir.join(skill);
-                let link_target = repo_skills_dir.join(skill);
-                let link_target =
-                    std::fs::canonicalize(&link_target).map_err(|e| AppError::SkillNotFound {
-                        skill: skill.clone(),
-                        path: link_target.clone(),
-                        source: e,
-                    })?;
-
-                match install::ensure_correct_symlink(&link_path, &link_target)? {
+                let link_path = target_dir.join(&skill.name);
+                match install::ensure_correct_symlink(&link_path, &skill.dir)? {
                     install::InstallOutcome::Created => {
                         println!(
                             "created {} -> {}",
                             display_path(&link_path),
-                            display_path(&link_target)
+                            display_path(&skill.dir)
                         );
                     }
                     install::InstallOutcome::Skipped => {

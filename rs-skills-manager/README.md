@@ -33,8 +33,12 @@ targets = [
 rs-skills-manager init
 
 # 在仓库根目录运行：默认使用 ./skills 作为 skills 目录
-# 安装指定技能到指定平台（-i 可重复）
+# 在 skills/ 目录内运行：默认使用当前目录作为 skills 目录
+# 安装指定技能到指定平台（-i 可重复；既支持 skill 名，也支持路径）
 rs-skills-manager -i software-engineer -i legal-counsel -o kimi
+
+# 也可以传路径（便于在任意目录运行；shell 展开后的 ./skills/* 也能工作）
+rs-skills-manager -i ./skills/software-engineer -o kimi
 
 # 安装到配置中全部平台
 rs-skills-manager -o all
