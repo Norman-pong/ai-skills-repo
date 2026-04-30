@@ -303,6 +303,9 @@ fn list_installed(cwd: &Path) -> Result<(), AppError> {
             continue;
         };
 
+        println!("{platform_name}");
+
+        let mut target_dirs = Vec::new();
         for target in &platform.targets {
             let target_dir = path_utils::resolve_path(&target.dir, cwd)?;
             let meta = match std::fs::metadata(&target_dir) {
@@ -329,93 +332,104 @@ fn list_installed(cwd: &Path) -> Result<(), AppError> {
                 );
                 continue;
             }
+            target_dirs.push(target_dir);
+        }
 
-            let entries = match std::fs::read_dir(&target_dir) {
+        target_dirs.sort_by_key(|a| display_path(a));
+
+        for (target_idx, target_dir) in target_dirs.iter().enumerate() {
+            let target_prefix = if target_idx + 1 == target_dirs.len() {
+                "└──"
+            } else {
+                "├──"
+            };
+            println!("{target_prefix} {}", display_path(target_dir));
+
+            let entries = match std::fs::read_dir(target_dir) {
                 Ok(e) => e,
                 Err(err) => {
                     eprintln!(
                         "warning: failed to list target dir (skipped): platform={platform_name} dir={} err={err}",
-                        display_path(&target_dir)
+                        display_path(target_dir)
                     );
                     continue;
                 }
             };
 
+            let mut rendered = Vec::new();
             for entry in entries {
                 let entry = match entry {
                     Ok(e) => e,
                     Err(err) => {
                         eprintln!(
                             "warning: failed to read target entry (skipped): platform={platform_name} dir={} err={err}",
-                            display_path(&target_dir)
+                            display_path(target_dir)
                         );
                         continue;
                     }
                 };
                 let name = entry.file_name().to_string_lossy().to_string();
+                if name == ".DS_Store" {
+                    continue;
+                }
+
                 let path = entry.path();
                 let meta = match std::fs::symlink_metadata(&path) {
                     Ok(m) => m,
                     Err(err) => {
-                        println!(
-                            "{platform_name}\t{}\t{name}\terror:{}",
-                            display_path(&target_dir),
-                            err
-                        );
+                        let line = format!("[?] {name} (error:{err})");
+                        rendered.push((name, line));
                         continue;
                     }
                 };
 
-                if !meta.file_type().is_symlink() {
-                    println!(
-                        "{platform_name}\t{}\t{name}\tnot-symlink",
-                        display_path(&target_dir)
-                    );
-                    continue;
-                }
-
-                let raw_target = match std::fs::read_link(&path) {
-                    Ok(t) => t,
-                    Err(err) => {
-                        println!(
-                            "{platform_name}\t{}\t{name}\tbroken:{}",
-                            display_path(&target_dir),
-                            err
-                        );
-                        continue;
-                    }
-                };
-
-                let resolved = install::resolve_symlink_target(&path, &raw_target);
-                let resolved = match std::fs::canonicalize(&resolved) {
-                    Ok(t) => t,
-                    Err(err) => {
-                        println!(
-                            "{platform_name}\t{}\t{name}\tbroken:{}",
-                            display_path(&target_dir),
-                            err
-                        );
-                        continue;
-                    }
-                };
-
-                let status = match &store_dir {
-                    Some(store_dir) => {
-                        let expected = store_dir.join(&name);
-                        let expected = std::fs::canonicalize(expected).ok();
-                        if expected.is_some_and(|e| e == resolved) {
-                            "ok".to_string()
-                        } else {
-                            format!("outside-store:{}", display_path(&resolved))
+                let line = if meta.file_type().is_symlink() {
+                    match std::fs::read_link(&path) {
+                        Ok(raw_target) => {
+                            let resolved = install::resolve_symlink_target(&path, &raw_target);
+                            match std::fs::canonicalize(&resolved) {
+                                Ok(resolved) => {
+                                    let status = match &store_dir {
+                                        Some(store_dir) => {
+                                            let expected = store_dir.join(&name);
+                                            let expected = std::fs::canonicalize(expected).ok();
+                                            if expected.is_some_and(|e| e == resolved) {
+                                                "ok".to_string()
+                                            } else {
+                                                "outside-store".to_string()
+                                            }
+                                        }
+                                        None => "unknown-store".to_string(),
+                                    };
+                                    format!("[L] {name} -> {} ({status})", display_path(&resolved))
+                                }
+                                Err(err) => format!("[L] {name} (broken:{err})"),
+                            }
                         }
+                        Err(err) => format!("[L] {name} (broken:{err})"),
                     }
-                    None => format!("target:{}", display_path(&resolved)),
+                } else if meta.is_dir() {
+                    format!("[D] {name}")
+                } else if meta.is_file() {
+                    format!("[F] {name}")
+                } else {
+                    format!("[?] {name}")
                 };
 
-                println!(
-                    "{platform_name}\t{}\t{name}\t{status}",
-                    display_path(&target_dir)
-                );
+                rendered.push((name, line));
+            }
+
+            rendered.sort_by(|a, b| a.0.cmp(&b.0));
+
+            for (entry_idx, (_, line)) in rendered.iter().enumerate() {
+                let has_more_targets = target_idx + 1 != target_dirs.len();
+                let indent = if has_more_targets { "│   " } else { "    " };
+                let prefix = if entry_idx + 1 == rendered.len() {
+                    "└──"
+                } else {
+                    "├──"
+                };
+                println!("{indent}{prefix} {line}");
             }
         }
     }

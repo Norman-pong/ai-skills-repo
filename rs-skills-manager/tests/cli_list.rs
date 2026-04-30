@@ -126,6 +126,10 @@ targets = [
     std::fs::create_dir_all(store_dir.join(skill)).unwrap();
     std::os::unix::fs::symlink(store_dir.join(skill), target_dir.join(skill)).unwrap();
 
+    std::fs::write(target_dir.join(".DS_Store"), "x").unwrap();
+    std::fs::write(target_dir.join("notes.txt"), "x").unwrap();
+    std::fs::create_dir_all(target_dir.join("dir-skill")).unwrap();
+
     let out = Command::new(bin_path())
         .env("HOME", home.path())
         .current_dir(tmp.path())
@@ -142,5 +146,10 @@ targets = [
 
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(stdout.contains("kimi"));
-    assert!(stdout.contains(skill));
+    assert!(stdout.contains(target_dir.to_string_lossy().as_ref()));
+    assert!(stdout.contains(&format!("[L] {skill} ->")));
+    assert!(stdout.contains("(ok)"));
+    assert!(stdout.contains("[F] notes.txt"));
+    assert!(stdout.contains("[D] dir-skill"));
+    assert!(!stdout.contains(".DS_Store"));
 }
