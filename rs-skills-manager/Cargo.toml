@@ -2,6 +2,9 @@
 name = "rs-skills-manager"
 version = "0.1.0"
 edition = "2021"
+description = "Install skills into platform directories via a local store and symlinks"
+license = "MIT"
+readme = "README.md"
 
 [[bin]]
 name = "sklink"
