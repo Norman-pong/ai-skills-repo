@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use crate::error::AppError;
 
 #[derive(Parser, Debug)]
-#[command(name = "rs-skills-manager")]
+#[command(name = "sklink")]
 #[command(
     about = "Install skills into platform directories via local store and symlinks",
     long_about = "Install skills (directories) into a local store and then link them into configured platform target directories.\n\nLocal store: ~/.config/rs-skills-manager/skills\nConfig file: ~/.config/rs-skills-manager/config.toml\n\nRules:\n- Skills are copied into the local store before linking\n- If a local store skill already exists: error unless --force is used\n- If link does not exist: create\n- If link exists and points to expected target: skip\n- Otherwise (file/dir or wrong target): error",

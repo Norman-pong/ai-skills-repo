@@ -2,14 +2,7 @@ use std::path::Path;
 use std::process::Command;
 
 fn bin_path() -> std::path::PathBuf {
-    let mut p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    p.push("target");
-    p.push("debug");
-    p.push("rs-skills-manager");
-    if cfg!(windows) {
-        p.set_extension("exe");
-    }
-    p
+    std::path::PathBuf::from(env!("CARGO_BIN_EXE_sklink"))
 }
 
 fn setup_temp_home() -> tempfile::TempDir {

@@ -3,6 +3,10 @@ name = "rs-skills-manager"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "sklink"
+path = "src/main.rs"
+
 [dependencies]
 clap = { version = "4.5.4", features = ["derive"] }
 serde = { version = "1.0.203", features = ["derive"] }

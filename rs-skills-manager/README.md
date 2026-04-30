@@ -1,4 +1,6 @@
-## rs-skills-manager
+## sklink
+
+crates.io 包名：`rs-skills-manager`（安装后命令为 `sklink`）
 
 将仓库中的 `skills/` 目录下各 skill（子目录）通过软链接安装到不同平台/Agent 的配置目录中，避免复制带来的漂移。
 
@@ -11,7 +13,7 @@
 初始化（推荐）：
 
 ```bash
-rs-skills-manager init
+sklink init
 ```
 
 默认会生成如下平台配置：
@@ -32,30 +34,30 @@ targets = [
 
 ```bash
 # 初始化配置
-rs-skills-manager init
+sklink init
 
 # 查看可用技能列表（优先从 ./skills 或当前 skills/ 目录发现；否则回退到本机技能仓库）
-rs-skills-manager list
+sklink list
 
 # 查看已安装到哪里（读取 config.toml 中的 targets 并扫描目标目录）
-rs-skills-manager list --installed
+sklink list --installed
 
 # 在仓库根目录运行：默认使用 ./skills 作为 skills 目录
 # 在 skills/ 目录内运行：默认使用当前目录作为 skills 目录
 # 安装指定技能到指定平台（-i 可重复；既支持 skill 名，也支持路径）
-rs-skills-manager -i software-engineer -i legal-counsel -o kimi
+sklink -i software-engineer -i legal-counsel -o kimi
 
 # 也可以传路径（便于在任意目录运行；shell 展开后的 ./skills/* 也能工作）
-rs-skills-manager -i ./skills/software-engineer -o kimi
+sklink -i ./skills/software-engineer -o kimi
 
 # 安装到配置中全部平台
-rs-skills-manager -o all
+sklink -o all
 
 # 不传 -o 时默认 all
-rs-skills-manager
+sklink
 
 # 若本机技能仓库中已存在同名 skill，必须显式 --force 才允许覆盖（覆盖会先备份旧目录再写入）
-rs-skills-manager --force -i software-engineer -o kimi
+sklink --force -i software-engineer -o kimi
 ```
 
 ### 开发运行（cargo run）
