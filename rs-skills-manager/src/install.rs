@@ -53,7 +53,7 @@ pub fn ensure_correct_symlink(
     }
 }
 
-fn resolve_symlink_target(link_path: &Path, raw_target: &PathBuf) -> PathBuf {
+pub fn resolve_symlink_target(link_path: &Path, raw_target: &PathBuf) -> PathBuf {
     if raw_target.is_absolute() {
         raw_target.clone()
     } else {

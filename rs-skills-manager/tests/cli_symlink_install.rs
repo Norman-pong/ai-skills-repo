@@ -17,6 +17,10 @@ fn setup_temp_home() -> TempDir {
     tempfile::tempdir().unwrap()
 }
 
+fn store_skill_dir(home: &Path, skill: &str) -> std::path::PathBuf {
+    home.join(".config/rs-skills-manager/skills").join(skill)
+}
+
 fn write_config(home: &Path, target_dir: &Path) {
     let config_dir = home.join(".config/rs-skills-manager");
     std::fs::create_dir_all(&config_dir).unwrap();
@@ -61,6 +65,7 @@ fn cli_installs_symlink_into_target_dir_and_is_idempotent() {
     let target_dir = home.path().join("targets/skills");
 
     write_config(home.path(), &target_dir);
+    std::fs::create_dir_all(&target_dir).unwrap();
 
     let out1 = run_cli(home.path(), &repo_root, &["-i", skill, "-o", "kimi"]);
     assert!(
@@ -74,10 +79,11 @@ fn cli_installs_symlink_into_target_dir_and_is_idempotent() {
     let meta = std::fs::symlink_metadata(&link_path).unwrap();
     assert!(meta.file_type().is_symlink());
     let actual = std::fs::canonicalize(&link_path).unwrap();
-    let expected = std::fs::canonicalize(repo_root.join("skills").join(skill)).unwrap();
+    let expected = std::fs::canonicalize(store_skill_dir(home.path(), skill)).unwrap();
     assert_eq!(actual, expected);
 
-    let out2 = run_cli(home.path(), &repo_root, &["-i", skill, "-o", "kimi"]);
+    let other_cwd = tempfile::tempdir().unwrap();
+    let out2 = run_cli_in_dir(home.path(), other_cwd.path(), &["-i", skill, "-o", "kimi"]);
     assert!(
         out2.status.success(),
         "stdout: {}\nstderr: {}",
@@ -97,6 +103,7 @@ fn cli_can_run_from_skills_dir_using_skill_name() {
     let target_dir = home.path().join("targets/skills");
 
     write_config(home.path(), &target_dir);
+    std::fs::create_dir_all(&target_dir).unwrap();
 
     let out = run_cli_in_dir(
         home.path(),
@@ -112,7 +119,7 @@ fn cli_can_run_from_skills_dir_using_skill_name() {
 
     let link_path = target_dir.join(skill);
     let actual = std::fs::canonicalize(&link_path).unwrap();
-    let expected = std::fs::canonicalize(repo_root.join("skills").join(skill)).unwrap();
+    let expected = std::fs::canonicalize(store_skill_dir(home.path(), skill)).unwrap();
     assert_eq!(actual, expected);
 }
 
@@ -125,6 +132,7 @@ fn cli_accepts_skill_path_without_repo_skills_dir_in_cwd() {
     let target_dir = home.path().join("targets/skills");
 
     write_config(home.path(), &target_dir);
+    std::fs::create_dir_all(&target_dir).unwrap();
 
     let other_cwd = tempfile::tempdir().unwrap();
     let skill_dir = repo_root.join("skills").join(skill);
@@ -146,11 +154,12 @@ fn cli_accepts_skill_path_without_repo_skills_dir_in_cwd() {
 
     let link_path = target_dir.join(skill);
     let actual = std::fs::canonicalize(&link_path).unwrap();
-    assert_eq!(actual, skill_dir);
+    let expected = std::fs::canonicalize(store_skill_dir(home.path(), skill)).unwrap();
+    assert_eq!(actual, expected);
 }
 
 #[test]
-fn cli_fails_when_platform_not_found() {
+fn cli_warns_when_platform_not_found() {
     let home = setup_temp_home();
     let tmp = tempfile::tempdir().unwrap();
     let skill = "software-engineer";
@@ -163,7 +172,7 @@ fn cli_fails_when_platform_not_found() {
         &repo_root,
         &["-i", skill, "-o", "missing-platform"],
     );
-    assert!(!out.status.success());
+    assert!(out.status.success());
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("platform not found"));
 }
@@ -215,4 +224,87 @@ fn cli_fails_when_symlink_points_to_different_target() {
     assert!(!out.status.success());
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("symlink points to a different target"));
+}
+
+#[test]
+fn cli_fails_when_store_skill_exists_without_force() {
+    let home = setup_temp_home();
+    let tmp = tempfile::tempdir().unwrap();
+    let skill = "software-engineer";
+    let repo_root = make_repo_root_with_skills(tmp.path(), skill);
+    let target_dir = home.path().join("targets/skills");
+
+    write_config(home.path(), &target_dir);
+    std::fs::create_dir_all(&target_dir).unwrap();
+
+    let existing = store_skill_dir(home.path(), skill);
+    std::fs::create_dir_all(&existing).unwrap();
+
+    let source = repo_root.join("skills").join(skill);
+    let out = Command::new(bin_path())
+        .env("HOME", home.path())
+        .current_dir(&repo_root)
+        .args(["-i", source.to_str().unwrap(), "-o", "kimi"])
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("skill already exists in local store"));
+}
+
+#[test]
+fn cli_force_overwrites_store_skill_by_backup_and_recopy() {
+    let home = setup_temp_home();
+    let tmp = tempfile::tempdir().unwrap();
+    let skill = "software-engineer";
+    let repo_root = make_repo_root_with_skills(tmp.path(), skill);
+    let target_dir = home.path().join("targets/skills");
+
+    let existing = store_skill_dir(home.path(), skill);
+    std::fs::create_dir_all(&existing).unwrap();
+    std::fs::write(existing.join("old.txt"), "old").unwrap();
+
+    std::fs::write(repo_root.join("skills").join(skill).join("new.txt"), "new").unwrap();
+
+    write_config(home.path(), &target_dir);
+    std::fs::create_dir_all(&target_dir).unwrap();
+
+    let out = run_cli(
+        home.path(),
+        &repo_root,
+        &["--force", "-i", skill, "-o", "kimi"],
+    );
+    assert!(
+        out.status.success(),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let stored = store_skill_dir(home.path(), skill);
+    assert!(stored.join("new.txt").exists());
+
+    let backups = home
+        .path()
+        .join(".config/rs-skills-manager/backups")
+        .join(skill);
+    let entries = std::fs::read_dir(&backups).unwrap().collect::<Vec<_>>();
+    assert!(!entries.is_empty());
+}
+
+#[test]
+fn cli_skips_when_target_dir_missing() {
+    let home = setup_temp_home();
+    let tmp = tempfile::tempdir().unwrap();
+    let skill = "software-engineer";
+    let repo_root = make_repo_root_with_skills(tmp.path(), skill);
+    let target_dir = home.path().join("targets/missing");
+
+    write_config(home.path(), &target_dir);
+
+    let out = run_cli(home.path(), &repo_root, &["-i", skill, "-o", "kimi"]);
+    assert!(out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("target dir not found"));
+    assert!(!target_dir.join(skill).exists());
 }
