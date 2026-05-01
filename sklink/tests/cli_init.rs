@@ -16,7 +16,7 @@ fn make_repo_skills_dir(root: &Path) -> std::path::PathBuf {
 }
 
 fn config_path(home: &Path) -> std::path::PathBuf {
-    home.join(".config/rs-skills-manager/config.toml")
+    home.join(".config/sklink/config.toml")
 }
 
 #[test]

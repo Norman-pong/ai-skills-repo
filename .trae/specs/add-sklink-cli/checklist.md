@@ -1,10 +1,10 @@
 - [x] CLI 支持 `-i <skill>`（可重复）与 `-o <platform|all>`，`--help` 可读
-- [x] 默认配置路径 `~/.config/rs-skills-manager/config.toml` 生效，且 `~` 可展开
-- [x] `repo_skills_dir` 缺省时默认使用当前目录下的 `./skills`
-- [x] 未指定 `-i` 时可正确发现并处理 `repo_skills_dir` 下所有 skills 子目录
+- [x] 默认配置路径 `~/.config/sklink/config.toml` 生效，且 `~` 可展开
+- [x] repo skills dir 可从仓库根目录 `./skills` 或当前 `skills/` 目录发现
+- [x] 未指定 `-i` 时可正确发现并处理 skills 目录下所有 skills 子目录
 - [x] 指定 `-i` 时不存在的 skill 会报错并以非 0 退出
 - [x] 指定平台名时仅处理该平台；`-o all` 会处理配置表内所有平台
-- [x] 目标目录不存在时会自动创建
+- [x] 目标目录不存在或不可用时会跳过并输出 warning（不会自动创建）
 - [x] 已存在且正确的软链接会跳过（幂等）
 - [x] 已存在但不是正确软链接时不会删除用户文件，直接报错退出
 - [x] 单元测试为镜像风格，结构与 src 模块对应

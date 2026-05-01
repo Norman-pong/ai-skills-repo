@@ -9,7 +9,7 @@ fn setup_temp_home() -> tempfile::TempDir {
 }
 
 fn store_dir(home: &std::path::Path) -> std::path::PathBuf {
-    home.join(".config/rs-skills-manager/skills")
+    home.join(".config/sklink/skills")
 }
 
 #[test]
@@ -98,7 +98,7 @@ fn cli_list_installed_prints_target_entries() {
     let target_dir = tmp.path().join("targets/skills");
     std::fs::create_dir_all(&target_dir).unwrap();
 
-    let config_dir = home.path().join(".config/rs-skills-manager");
+    let config_dir = home.path().join(".config/sklink");
     std::fs::create_dir_all(&config_dir).unwrap();
     std::fs::write(
         config_dir.join("config.toml"),

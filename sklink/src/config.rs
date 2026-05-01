@@ -28,7 +28,7 @@ pub fn load_default_config() -> Result<Config, AppError> {
 }
 
 pub fn default_config_path() -> Result<PathBuf, AppError> {
-    let raw = "~/.config/rs-skills-manager/config.toml";
+    let raw = "~/.config/sklink/config.toml";
     let cwd = std::env::current_dir().map_err(AppError::Io)?;
     path_utils::resolve_path(raw, &cwd)
 }

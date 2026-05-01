@@ -11,11 +11,11 @@ fn setup_temp_home() -> TempDir {
 }
 
 fn store_skill_dir(home: &Path, skill: &str) -> std::path::PathBuf {
-    home.join(".config/rs-skills-manager/skills").join(skill)
+    home.join(".config/sklink/skills").join(skill)
 }
 
 fn write_config(home: &Path, target_dir: &Path) {
-    let config_dir = home.join(".config/rs-skills-manager");
+    let config_dir = home.join(".config/sklink");
     std::fs::create_dir_all(&config_dir).unwrap();
     let config_path = config_dir.join("config.toml");
     let content = format!(
@@ -277,10 +277,7 @@ fn cli_force_overwrites_store_skill_by_backup_and_recopy() {
     let stored = store_skill_dir(home.path(), skill);
     assert!(stored.join("new.txt").exists());
 
-    let backups = home
-        .path()
-        .join(".config/rs-skills-manager/backups")
-        .join(skill);
+    let backups = home.path().join(".config/sklink/backups").join(skill);
     let entries = std::fs::read_dir(&backups).unwrap().collect::<Vec<_>>();
     assert!(!entries.is_empty());
 }

@@ -1,20 +1,20 @@
 # Tasks
 - [x] Task 1: 初始化 Rust CLI 工程
-  - [x] 创建新的 Rust binary crate（名称：`rs-skills-manager`），并加入到仓库中
+  - [x] 创建新的 Rust binary crate（名称：`sklink`），并加入到仓库中
   - [x] 定义基础命令行参数：`-i`（可重复）与 `-o`（platform|all）
 
 - [x] Task 2: 实现配置读取与解析
-  - [x] 从 `~/.config/rs-skills-manager/config.toml` 加载并解析 TOML
+  - [x] 从 `~/.config/sklink/config.toml` 加载并解析 TOML
   - [x] 实现 `~` 展开与路径规范化
-  - [x] 实现当 `repo_skills_dir` 缺省时的默认解析（`./skills`）
+  - [x] 实现 repo skills dir 的发现逻辑（仓库根目录 `./skills` 或当前 `skills/` 目录）
 
 - [x] Task 3: 实现 skills 发现与选择
-  - [x] 当未传 `-i`：扫描 `repo_skills_dir` 下的子目录名作为 skills 列表
+  - [x] 当未传 `-i`：扫描发现到的 skills 目录下的子目录名作为 skills 列表
   - [x] 当传入 `-i`：校验 skill 存在，否则返回非 0
 
 - [x] Task 4: 实现软链接安装逻辑
   - [x] 对 `-o all` 遍历全部平台；否则只处理指定平台
-  - [x] 针对每个 `targets[].dir` 创建目录并创建软链接 `<dir>/<skill> -> <repo_skills_dir>/<skill>`
+  - [x] 将 skill 复制到 local store，并创建软链接 `<dir>/<skill> -> <local_store>/<skill>`
   - [x] 幂等：正确链接跳过；冲突（非正确软链接/非软链接）报错退出
   - [x] 输出每项结果（created/skipped/error）
 

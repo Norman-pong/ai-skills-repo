@@ -5,7 +5,7 @@ use crate::error::AppError;
 use crate::path_utils;
 
 pub fn default_store_dir(cwd: &Path) -> Result<PathBuf, AppError> {
-    path_utils::resolve_path("~/.config/rs-skills-manager/skills", cwd)
+    path_utils::resolve_path("~/.config/sklink/skills", cwd)
 }
 
 pub fn stage_skill_to_store(
