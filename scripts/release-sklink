@@ -10,7 +10,7 @@ Notes:
   - Requires a clean git worktree (no uncommitted changes)
   - Creates a Lore-style commit for version bump
   - Tags vX.Y.Z
-  - Publishes with `cargo publish` (crates.io)
+  - Publishes with `cargo publish --registry <REGISTRY>` (default: crates-io)
   - Does NOT push; it will print push commands at the end
 EOF
 }
@@ -105,6 +105,7 @@ write_version() {
 main() {
   local bump="patch"
   local dry_run=0
+  local publish_registry="${SKLINK_PUBLISH_REGISTRY:-crates-io}"
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -151,6 +152,7 @@ main() {
   echo "current version: ${current_version}"
   echo "next version: ${next_version} (${bump})"
   echo "tag: ${tag}"
+  echo "registry: ${publish_registry}"
 
   if [[ "$dry_run" -eq 1 ]]; then
     cat <<EOF
@@ -161,7 +163,7 @@ dry-run actions:
   - run: (cd sklink && cargo test)
   - commit (Lore): bump version to ${next_version}
   - tag: ${tag}
-  - publish: (cd sklink && cargo publish)
+  - publish: (cd sklink && cargo publish --registry ${publish_registry})
   - then manually:
       git push
       git push --tags
@@ -180,12 +182,12 @@ EOF
   git add "$cargo_toml"
 
   git commit \
-    -m "准备发布 sklink ${tag} 到 crates.io" \
+    -m "准备发布 sklink ${tag} 到 ${publish_registry}" \
     -m "将 Cargo.toml 版本号从 ${current_version} 升级到 ${next_version}，并在发布前执行 fmt/clippy/test 以降低发布失败概率。\n\nConstraint: crates.io 不允许覆盖发布同版本号；需先 bump 版本再发布\nRejected: 手工修改版本号并直接 publish | 易漏掉回归检查且容易出现 tag 与版本不一致\nConfidence: 高\nScope-risk: 窄\nDirective: 版本 bump 的提交必须先于 tag 与 publish；不要跳过 fmt/clippy/test\nTested: cargo fmt --check; cargo clippy -- -D warnings; cargo test（sklink）\nNot-tested: 实际 crates.io 发布结果（由 cargo publish 执行决定）"
 
-  git tag "${tag}"
+  (cd sklink && cargo publish --registry "${publish_registry}")
 
-  (cd sklink && cargo publish)
+  git tag "${tag}"
 
   cat <<EOF
 publish done.
@@ -196,4 +198,3 @@ EOF
 }
 
 main "$@"
-
