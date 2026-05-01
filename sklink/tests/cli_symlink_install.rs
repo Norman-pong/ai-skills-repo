@@ -194,9 +194,11 @@ fn cli_warns_when_platform_not_found() {
         &repo_root,
         &["-i", skill, "-p", "missing-platform"],
     );
-    assert!(out.status.success());
+    assert!(!out.status.success());
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("platform not found"));
+    assert!(stderr.contains("available platforms"));
+    assert!(stderr.contains("kimi"));
 }
 
 #[test]

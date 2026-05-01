@@ -61,7 +61,7 @@ enum Commands {
 fn main() {
     let cli = Cli::parse();
     if let Err(err) = run(cli) {
-        eprintln!("{err}");
+        print_error(&err);
         std::process::exit(1);
     }
 }
@@ -140,8 +140,12 @@ fn run(cli: Cli) -> Result<(), AppError> {
         names
     } else {
         if !config.platforms.contains_key(&platform) {
-            eprintln!("warning: platform not found: {platform}");
-            return Ok(());
+            let mut names: Vec<String> = config.platforms.keys().cloned().collect();
+            names.sort();
+            return Err(AppError::PlatformNotFound {
+                platform,
+                available: names.join(", "),
+            });
         }
         vec![platform]
     };
@@ -441,4 +445,17 @@ fn list_installed(cwd: &Path) -> Result<(), AppError> {
 
 fn display_path(path: &Path) -> String {
     path.to_string_lossy().to_string()
+}
+
+fn print_error(err: &AppError) {
+    eprintln!("{err}");
+    match err {
+        AppError::ConfigRead { .. } | AppError::ConfigParse { .. } => {
+            eprintln!("hint: run 'sklink init' to generate a default config");
+        }
+        AppError::ConfigAlreadyExists { .. } => {
+            eprintln!("hint: run 'sklink init --force' to overwrite the existing config");
+        }
+        _ => {}
+    }
 }

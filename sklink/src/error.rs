@@ -16,6 +16,9 @@ pub enum AppError {
         source: toml::de::Error,
     },
 
+    #[error("platform not found: {platform}\navailable platforms: {available}")]
+    PlatformNotFound { platform: String, available: String },
+
     #[error("HOME is not set; cannot expand ~")]
     HomeMissing,
 
