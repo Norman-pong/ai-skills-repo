@@ -18,7 +18,7 @@ use crate::error::AppError;
 #[command(
     about = "Install skills into platform directories via local store and symlinks",
     long_about = "Install skills (directories) into a local store and then link them into configured platform target directories.\n\nLocal store: ~/.config/sklink/skills\nConfig file: ~/.config/sklink/config.toml\n\nRules:\n- Skills are copied into the local store before linking\n- If a local store skill already exists: error unless --force is used\n- If link does not exist: create\n- If link exists and points to expected target: skip\n- Otherwise (file/dir or wrong target): error",
-    after_help = "Tip: when using cargo run, pass CLI args after `--`.\nExamples:\n  cargo run -- --help\n  cargo run -- init\n  cargo run -- list\n  cargo run -- list --installed\n  cargo run -- -o all\n  cargo run -- -i software-engineer -o kimi\n  cargo run -- --force -i software-engineer -o kimi",
+    after_help = "Tip: when using cargo run, pass CLI args after `--`.\nExamples:\n  cargo run -- --help\n  cargo run -- init\n  cargo run -- list\n  cargo run -- list --installed\n  cargo run -- -p all\n  cargo run -- -i software-engineer -p kimi\n  cargo run -- --force -i software-engineer -p kimi",
     args_conflicts_with_subcommands = true,
     subcommand_precedence_over_arg = true
 )]
@@ -28,13 +28,15 @@ struct Cli {
 
     #[arg(
         short = 'i',
+        long = "install",
         value_name = "SKILL|PATH",
         help = "Skill name or path to a skill directory (repeatable). Omit to install all discovered skills"
     )]
     skills: Vec<String>,
 
     #[arg(
-        short = 'o',
+        short = 'p',
+        long = "platform",
         value_name = "PLATFORM|all",
         help = "Target platform name or all"
     )]

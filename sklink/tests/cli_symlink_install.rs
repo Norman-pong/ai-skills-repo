@@ -60,7 +60,7 @@ fn cli_installs_symlink_into_target_dir_and_is_idempotent() {
     write_config(home.path(), &target_dir);
     std::fs::create_dir_all(&target_dir).unwrap();
 
-    let out1 = run_cli(home.path(), &repo_root, &["-i", skill, "-o", "kimi"]);
+    let out1 = run_cli(home.path(), &repo_root, &["-i", skill, "-p", "kimi"]);
     assert!(
         out1.status.success(),
         "stdout: {}\nstderr: {}",
@@ -76,7 +76,7 @@ fn cli_installs_symlink_into_target_dir_and_is_idempotent() {
     assert_eq!(actual, expected);
 
     let other_cwd = tempfile::tempdir().unwrap();
-    let out2 = run_cli_in_dir(home.path(), other_cwd.path(), &["-i", skill, "-o", "kimi"]);
+    let out2 = run_cli_in_dir(home.path(), other_cwd.path(), &["-i", skill, "-p", "kimi"]);
     assert!(
         out2.status.success(),
         "stdout: {}\nstderr: {}",
@@ -85,6 +85,35 @@ fn cli_installs_symlink_into_target_dir_and_is_idempotent() {
     );
     let stdout2 = String::from_utf8_lossy(&out2.stdout);
     assert!(stdout2.contains("skipped"));
+}
+
+#[test]
+fn cli_accepts_install_long_option() {
+    let home = setup_temp_home();
+    let tmp = tempfile::tempdir().unwrap();
+    let skill = "software-engineer";
+    let repo_root = make_repo_root_with_skills(tmp.path(), skill);
+    let target_dir = home.path().join("targets/skills");
+
+    write_config(home.path(), &target_dir);
+    std::fs::create_dir_all(&target_dir).unwrap();
+
+    let out = run_cli(
+        home.path(),
+        &repo_root,
+        &["--install", skill, "--platform", "kimi"],
+    );
+    assert!(
+        out.status.success(),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let link_path = target_dir.join(skill);
+    let actual = std::fs::canonicalize(&link_path).unwrap();
+    let expected = std::fs::canonicalize(store_skill_dir(home.path(), skill)).unwrap();
+    assert_eq!(actual, expected);
 }
 
 #[test]
@@ -101,7 +130,7 @@ fn cli_can_run_from_skills_dir_using_skill_name() {
     let out = run_cli_in_dir(
         home.path(),
         &repo_root.join("skills"),
-        &["-i", skill, "-o", "kimi"],
+        &["-i", skill, "-p", "kimi"],
     );
     assert!(
         out.status.success(),
@@ -134,7 +163,7 @@ fn cli_accepts_skill_path_without_repo_skills_dir_in_cwd() {
     let out = Command::new(bin_path())
         .env("HOME", home.path())
         .current_dir(other_cwd.path())
-        .args(["-i", skill_dir.to_str().unwrap(), "-o", "kimi"])
+        .args(["-i", skill_dir.to_str().unwrap(), "-p", "kimi"])
         .output()
         .unwrap();
 
@@ -163,7 +192,7 @@ fn cli_warns_when_platform_not_found() {
     let out = run_cli(
         home.path(),
         &repo_root,
-        &["-i", skill, "-o", "missing-platform"],
+        &["-i", skill, "-p", "missing-platform"],
     );
     assert!(out.status.success());
     let stderr = String::from_utf8_lossy(&out.stderr);
@@ -175,7 +204,7 @@ fn cli_fails_when_config_missing() {
     let home = setup_temp_home();
     let tmp = tempfile::tempdir().unwrap();
     let repo_root = tmp.path();
-    let out = run_cli(home.path(), repo_root, &["-o", "all"]);
+    let out = run_cli(home.path(), repo_root, &["-p", "all"]);
     assert!(!out.status.success());
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("failed to read config"));
@@ -193,7 +222,7 @@ fn cli_fails_when_target_path_conflicts_with_regular_file() {
     std::fs::create_dir_all(&target_dir).unwrap();
     std::fs::write(target_dir.join(skill), "not a symlink").unwrap();
 
-    let out = run_cli(home.path(), &repo_root, &["-i", skill, "-o", "kimi"]);
+    let out = run_cli(home.path(), &repo_root, &["-i", skill, "-p", "kimi"]);
     assert!(!out.status.success());
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("path exists and is not a symlink"));
@@ -213,7 +242,7 @@ fn cli_fails_when_symlink_points_to_different_target() {
     std::fs::create_dir_all(&other).unwrap();
     std::os::unix::fs::symlink(&other, target_dir.join(skill)).unwrap();
 
-    let out = run_cli(home.path(), &repo_root, &["-i", skill, "-o", "kimi"]);
+    let out = run_cli(home.path(), &repo_root, &["-i", skill, "-p", "kimi"]);
     assert!(!out.status.success());
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("symlink points to a different target"));
@@ -237,7 +266,7 @@ fn cli_fails_when_store_skill_exists_without_force() {
     let out = Command::new(bin_path())
         .env("HOME", home.path())
         .current_dir(&repo_root)
-        .args(["-i", source.to_str().unwrap(), "-o", "kimi"])
+        .args(["-i", source.to_str().unwrap(), "-p", "kimi"])
         .output()
         .unwrap();
     assert!(!out.status.success());
@@ -265,7 +294,7 @@ fn cli_force_overwrites_store_skill_by_backup_and_recopy() {
     let out = run_cli(
         home.path(),
         &repo_root,
-        &["--force", "-i", skill, "-o", "kimi"],
+        &["--force", "-i", skill, "-p", "kimi"],
     );
     assert!(
         out.status.success(),
@@ -292,7 +321,7 @@ fn cli_skips_when_target_dir_missing() {
 
     write_config(home.path(), &target_dir);
 
-    let out = run_cli(home.path(), &repo_root, &["-i", skill, "-o", "kimi"]);
+    let out = run_cli(home.path(), &repo_root, &["-i", skill, "-p", "kimi"]);
     assert!(out.status.success());
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("target dir not found"));

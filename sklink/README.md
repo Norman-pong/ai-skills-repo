@@ -44,7 +44,7 @@ targets = [
 ]
 ```
 
-- `<platform_name>`：平台名（`-o` 传入的值）
+- `<platform_name>`：平台名（`-p/--platform` 传入的值）
 - `<target_dir>`：目标目录路径，支持 `~`，也支持相对路径（相对当前运行目录解析）
 
 ### 用法
@@ -62,19 +62,22 @@ sklink list --installed
 # 在仓库根目录运行：默认使用 ./skills 作为 skills 目录
 # 在 skills/ 目录内运行：默认使用当前目录作为 skills 目录
 # 安装指定技能到指定平台（-i 可重复；既支持 skill 名，也支持路径）
-sklink -i software-engineer -i legal-counsel -o kimi
+sklink -i software-engineer -i legal-counsel -p kimi
+
+# 使用长选项安装（等价于 -i）
+sklink --install software-engineer -p kimi
 
 # 也可以传路径（便于在任意目录运行；shell 展开后的 ./skills/* 也能工作）
-sklink -i ./skills/software-engineer -o kimi
+sklink -i ./skills/software-engineer -p kimi
 
 # 安装到配置中全部平台
-sklink -o all
+sklink -p all
 
-# 不传 -o 时默认 all
+# 不传 -p 时默认 all
 sklink
 
 # 若本机技能仓库中已存在同名 skill，必须显式 --force 才允许覆盖（覆盖会先备份旧目录再写入）
-sklink --force -i software-engineer -o kimi
+sklink --force -i software-engineer -p kimi
 ```
 
 ### 安装模式（默认动作）
@@ -82,13 +85,13 @@ sklink --force -i software-engineer -o kimi
 不带子命令时执行安装流程：
 
 ```bash
-sklink [-i SKILL|PATH ...] [-o PLATFORM|all] [--force]
+sklink [-i|--install SKILL|PATH ...] [-p|--platform PLATFORM|all] [--force]
 ```
 
-- `-i <SKILL|PATH>`：可重复
+- `-i, --install <SKILL|PATH>`：可重复
   - 传 skill 名：会在 local store / repo skills dir 中解析
   - 传路径：必须指向一个目录，skill 名取目录名
-- `-o <PLATFORM|all>`：不传默认 `all`
+- `-p, --platform <PLATFORM|all>`：不传默认 `all`
 - `--force`
   - 允许覆盖 local store 中的同名 skill（覆盖前会备份）
   - 影响部分解析优先级（见“skill 解析与优先级”）
@@ -100,7 +103,7 @@ sklink [-i SKILL|PATH ...] [-o PLATFORM|all] [--force]
 cargo run -- --help
 cargo run -- list
 cargo run -- list --installed
-cargo run -- -o all
+cargo run -- -p all
 ```
 
 ### 行为说明
