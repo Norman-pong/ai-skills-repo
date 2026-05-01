@@ -1,6 +1,6 @@
 [package]
 name = "sklink"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 description = "Install skills into platform directories via a local store and symlinks"
 documentation = "https://docs.rs/sklink"
