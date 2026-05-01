@@ -59,6 +59,9 @@ sklink list
 # 查看已安装到哪里（读取 config.toml 中的 targets 并扫描目标目录）
 sklink list --installed
 
+# 生成补全脚本（以 zsh 为例）
+sklink completions zsh > _sklink
+
 # 在仓库根目录运行：默认使用 ./skills 作为 skills 目录
 # 在 skills/ 目录内运行：默认使用当前目录作为 skills 目录
 # 安装指定技能到指定平台（-i 可重复；既支持 skill 名，也支持路径）

@@ -6,7 +6,8 @@ mod path_utils;
 mod skills;
 mod store;
 
-use clap::Parser;
+use clap::{CommandFactory, Parser};
+use clap_complete::{generate, Shell};
 use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
@@ -56,6 +57,10 @@ enum Commands {
         #[arg(long, help = "Show installed skills across configured targets")]
         installed: bool,
     },
+    Completions {
+        #[arg(value_enum)]
+        shell: Shell,
+    },
 }
 
 fn main() {
@@ -80,6 +85,11 @@ fn run(cli: Cli) -> Result<(), AppError> {
                     return list_installed(&cwd);
                 }
                 list_available(&cwd)
+            }
+            Commands::Completions { shell } => {
+                let mut cmd = Cli::command();
+                generate(shell, &mut cmd, "sklink", &mut std::io::stdout());
+                Ok(())
             }
         };
     }
