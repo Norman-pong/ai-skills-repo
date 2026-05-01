@@ -22,4 +22,3 @@ fn cli_completions_zsh_outputs_script() {
     assert!(!stdout.trim().is_empty());
     assert!(stdout.contains("sklink"));
 }
-
