@@ -157,3 +157,7 @@ cargo run -- -p all
 ### 平台与系统限制
 
 - 当前使用 Unix 软链接实现（macOS/Linux）
+
+### 发布
+
+发布到 crates.io 的流程已固化为脚本，见 [scripts/README.md](file:///Users/norman/workspace/zhimingcool/chore/scripts/README.md)

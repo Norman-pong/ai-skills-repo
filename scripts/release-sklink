@@ -1,0 +1,199 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage:
+  scripts/release-sklink [patch|minor|major] [--dry-run]
+
+Notes:
+  - Requires a clean git worktree (no uncommitted changes)
+  - Creates a Lore-style commit for version bump
+  - Tags vX.Y.Z
+  - Publishes with `cargo publish` (crates.io)
+  - Does NOT push; it will print push commands at the end
+EOF
+}
+
+die() {
+  echo "error: $*" >&2
+  exit 1
+}
+
+require_cmd() {
+  command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"
+}
+
+repo_root() {
+  git rev-parse --show-toplevel 2>/dev/null
+}
+
+ensure_clean_worktree() {
+  local st
+  st="$(git status --porcelain)"
+  [[ -z "${st}" ]] || die "git worktree is dirty; please commit or stash changes first"
+}
+
+read_version() {
+  local path="$1"
+  local line
+  line="$(
+    awk '
+      /^\[package\]$/ { in_pkg=1; next }
+      /^\[/ { if (in_pkg) exit }
+      in_pkg && $0 ~ /^version[[:space:]]*=/ { print; exit }
+    ' "$path"
+  )"
+  [[ -n "$line" ]] || die "failed to find package version in $path"
+  echo "$line" | sed -E 's/^[^"]*"([^"]+)".*$/\1/'
+}
+
+bump_version() {
+  local bump="$1"
+  local v="$2"
+  local major minor patch
+  IFS='.' read -r major minor patch <<<"$v"
+  [[ -n "${major}" && -n "${minor}" && -n "${patch}" ]] || die "invalid version: $v"
+
+  case "$bump" in
+    major)
+      major=$((major + 1))
+      minor=0
+      patch=0
+      ;;
+    minor)
+      minor=$((minor + 1))
+      patch=0
+      ;;
+    patch)
+      patch=$((patch + 1))
+      ;;
+    *)
+      die "invalid bump: $bump"
+      ;;
+  esac
+
+  echo "${major}.${minor}.${patch}"
+}
+
+write_version() {
+  local path="$1"
+  local new_version="$2"
+  local tmp
+  tmp="$(mktemp)"
+
+  awk -v new_version="$new_version" '
+    BEGIN { in_pkg=0; done=0 }
+    /^\[package\]$/ { in_pkg=1; print; next }
+    /^\[/ { if (in_pkg) in_pkg=0; print; next }
+    in_pkg && !done && $0 ~ /^version[[:space:]]*=/ {
+      sub(/"[^"]+"/, "\"" new_version "\"")
+      done=1
+      print
+      next
+    }
+    { print }
+    END { if (!done) exit 10 }
+  ' "$path" >"$tmp" || {
+    rm -f "$tmp"
+    die "failed to update version in $path"
+  }
+
+  mv "$tmp" "$path"
+}
+
+main() {
+  local bump="patch"
+  local dry_run=0
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      patch|minor|major)
+        bump="$1"
+        shift
+        ;;
+      --dry-run)
+        dry_run=1
+        shift
+        ;;
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      *)
+        usage >&2
+        die "unexpected argument: $1"
+        ;;
+    esac
+  done
+
+  require_cmd git
+  require_cmd cargo
+  require_cmd awk
+  require_cmd sed
+  require_cmd mktemp
+
+  local root
+  root="$(repo_root)" || die "not a git repository"
+  cd "$root"
+
+  ensure_clean_worktree
+
+  local cargo_toml="sklink/Cargo.toml"
+  [[ -f "$cargo_toml" ]] || die "missing $cargo_toml"
+
+  local current_version next_version tag
+  current_version="$(read_version "$cargo_toml")"
+  next_version="$(bump_version "$bump" "$current_version")"
+  tag="v${next_version}"
+
+  echo "release target: sklink"
+  echo "current version: ${current_version}"
+  echo "next version: ${next_version} (${bump})"
+  echo "tag: ${tag}"
+
+  if [[ "$dry_run" -eq 1 ]]; then
+    cat <<EOF
+dry-run actions:
+  - update ${cargo_toml} version
+  - run: (cd sklink && cargo fmt --check)
+  - run: (cd sklink && cargo clippy -- -D warnings)
+  - run: (cd sklink && cargo test)
+  - commit (Lore): bump version to ${next_version}
+  - tag: ${tag}
+  - publish: (cd sklink && cargo publish)
+  - then manually:
+      git push
+      git push --tags
+EOF
+    exit 0
+  fi
+
+  git rev-parse "${tag}" >/dev/null 2>&1 && die "tag already exists: ${tag}"
+
+  write_version "$cargo_toml" "$next_version"
+
+  (cd sklink && cargo fmt --check)
+  (cd sklink && cargo clippy -- -D warnings)
+  (cd sklink && cargo test)
+
+  git add "$cargo_toml"
+
+  git commit \
+    -m "准备发布 sklink ${tag} 到 crates.io" \
+    -m "将 Cargo.toml 版本号从 ${current_version} 升级到 ${next_version}，并在发布前执行 fmt/clippy/test 以降低发布失败概率。\n\nConstraint: crates.io 不允许覆盖发布同版本号；需先 bump 版本再发布\nRejected: 手工修改版本号并直接 publish | 易漏掉回归检查且容易出现 tag 与版本不一致\nConfidence: 高\nScope-risk: 窄\nDirective: 版本 bump 的提交必须先于 tag 与 publish；不要跳过 fmt/clippy/test\nTested: cargo fmt --check; cargo clippy -- -D warnings; cargo test（sklink）\nNot-tested: 实际 crates.io 发布结果（由 cargo publish 执行决定）"
+
+  git tag "${tag}"
+
+  (cd sklink && cargo publish)
+
+  cat <<EOF
+publish done.
+next:
+  git push
+  git push --tags
+EOF
+}
+
+main "$@"
+
