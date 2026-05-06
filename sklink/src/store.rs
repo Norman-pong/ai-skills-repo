@@ -55,7 +55,7 @@ fn store_backup_dir(store_dir: &Path, skill_name: &str) -> Result<PathBuf, AppEr
     Ok(parent.join("backups").join(skill_name).join(ts.to_string()))
 }
 
-fn copy_dir_recursive(from: &Path, to: &Path) -> Result<(), AppError> {
+pub(crate) fn copy_dir_recursive(from: &Path, to: &Path) -> Result<(), AppError> {
     std::fs::create_dir(to).map_err(|e| AppError::StoreDirCreate {
         dir: to.to_path_buf(),
         source: e,
@@ -70,6 +70,10 @@ fn copy_dir_recursive(from: &Path, to: &Path) -> Result<(), AppError> {
             dir: from.to_path_buf(),
             source: e,
         })?;
+
+        if entry.file_name() == ".git" {
+            continue;
+        }
 
         let ty = entry.file_type().map_err(|e| AppError::StoreDirRead {
             dir: from.to_path_buf(),

@@ -62,42 +62,62 @@ sklink list --installed
 # 生成补全脚本（以 zsh 为例）
 sklink completions zsh > _sklink
 
-# 在仓库根目录运行：默认使用 ./skills 作为 skills 目录
-# 在 skills/ 目录内运行：默认使用当前目录作为 skills 目录
-# 安装指定技能到指定平台（-i 可重复；既支持 skill 名，也支持路径）
-sklink -i software-engineer -i legal-counsel -p kimi
+# 安装 skill 到本机技能仓库（local store）
+# - 在仓库根目录运行：可用 skill 名（从 ./skills/<skill> 解析）
+# - 在 skills/ 目录内运行：可用 skill 名（从 ./<skill> 解析）
+sklink -i software-engineer -i legal-counsel
 
-# 使用长选项安装（等价于 -i）
-sklink --install software-engineer -p kimi
+# 也可以传路径（shell 展开后的 ./skills/* 也能工作）
+sklink -i ./skills/software-engineer -i ./skills/legal-counsel
 
-# 也可以传路径（便于在任意目录运行；shell 展开后的 ./skills/* 也能工作）
-sklink -i ./skills/software-engineer -p kimi
+# 从 GitHub 仓库安装（优先提取 repo/skills/*；否则 repo 根目录视为单个 skill）
+sklink -i https://github.com/org/repo
 
-# 安装到配置中全部平台
-sklink -p all
+# 同步本机技能仓库到平台目录（读取 config.toml）
+sklink --async -p all
+sklink --async -p kimi
 
-# 不传 -p 时默认 all
-sklink
+# 安装后立即同步到平台（install + async 可组合）
+sklink -i software-engineer --async -p kimi
 
-# 若本机技能仓库中已存在同名 skill，必须显式 --force 才允许覆盖（覆盖会先备份旧目录再写入）
-sklink --force -i software-engineer -p kimi
+# 输出 skill 到项目目录（默认 .agent/skills/，会自动创建目录）
+sklink -o software-engineer
+
+# 指定输出目录
+sklink -o software-engineer --dir .agent/skills
+
+# 导出（复制）而不是软链
+sklink -o software-engineer --export
 ```
 
-### 安装模式（默认动作）
+### 模式
 
-不带子命令时执行安装流程：
+#### Install（安装到本机技能仓库）
 
 ```bash
-sklink [-i|--install SKILL|PATH ...] [-p|--platform PLATFORM|all] [--force]
+sklink -i|--install <SRC>... [--force] [--async [-p|--platform <PLATFORM|all>]]
 ```
 
-- `-i, --install <SKILL|PATH>`：可重复
-  - 传 skill 名：会在 local store / repo skills dir 中解析
-  - 传路径：必须指向一个目录，skill 名取目录名
-- `-p, --platform <PLATFORM|all>`：不传默认 `all`
-- `--force`
-  - 允许覆盖 local store 中的同名 skill（覆盖前会备份）
-  - 影响部分解析优先级（见“skill 解析与优先级”）
+- `<SRC>`：skill 名、目录路径（支持 `./`、shell 展开）、或 Git 仓库 URL
+- `--force`：允许覆盖 local store 中同名 skill（覆盖前会备份）
+- `--async`：安装完成后立即同步到平台目录（见下）
+
+#### Sync（同步到平台目录）
+
+```bash
+sklink --async [-p|--platform <PLATFORM|all>]
+```
+
+- `-p/--platform` 仅在 `--async` 模式下有效
+
+#### Output（输出到项目目录）
+
+```bash
+sklink -o|--output <SKILL>... [--dir <DIR>] [--export]
+```
+
+- `--dir` 默认 `.agent/skills/`（会自动创建）
+- `--export`：复制目录而不是创建软链
 
 ### 开发运行（cargo run）
 
@@ -106,33 +126,37 @@ sklink [-i|--install SKILL|PATH ...] [-p|--platform PLATFORM|all] [--force]
 cargo run -- --help
 cargo run -- list
 cargo run -- list --installed
-cargo run -- -p all
+cargo run -- --async -p all
 ```
 
 ### 行为说明
 
-- skills 会先复制到 local store `~/.config/sklink/skills/<skill>`，再从 target dir 创建软链接
-- 若 target dir 不存在或不可用：跳过并输出 warning（不会自动创建）
-- 若 local store 中已存在同名 skill：
-  - 批量安装（不传 `-i`）时：默认直接使用 store 版本（不报错），除非指定 `--force` 才会用当前来源覆盖 store
-  - 指定安装（传 `-i`）时：默认报错；仅在指定 `--force` 时才允许覆盖（覆盖会先将旧目录备份到 `~/.config/sklink/backups/`）
-- 若链接不存在：创建软链接 `<target_dir>/<skill> -> <local_store>/<skill>`
-- 若已存在且为正确软链接：跳过并输出 `skipped`
-- 若已存在但不是正确软链接（普通文件/目录/指向其他目标）：报错退出（避免误删用户文件）
+- `-i` 会将来源目录复制到 local store `~/.config/sklink/skills/<skill>`
+  - 若 local store 中已存在同名 skill：默认报错；仅 `--force` 才允许覆盖（覆盖会先将旧目录备份到 `~/.config/sklink/backups/`）
+- `--async` 会从 local store 同步软链接到 config 指定的 target dir：
+  - 若 target dir 不存在或不可用：跳过并输出 warning（不会自动创建）
+  - 若链接不存在：创建软链接 `<target_dir>/<skill> -> <local_store>/<skill>`
+  - 若已存在且为正确软链接：跳过并输出 `skipped`
+  - 若已存在但不是正确软链接（普通文件/目录/指向其他目标）：报错退出（避免误删用户文件）
+- `-o/--output` 默认创建软链 `<out_dir>/<skill> -> <local_store>/<skill>`
+  - `--export` 改为复制目录内容
 
 ### skill 解析与优先级
 
 当 `-i` 传入的是“skill 名”（不是路径）时：
 
-- 同名 skill 在 local store 存在：默认使用 local store
-- local store 不存在但 repo skills dir 可用：使用 repo skills dir
-- 同名 skill 同时在 local store 与 repo skills dir 存在：
-  - 当前实现：带 `--force` 时优先 repo skills dir；不带 `--force` 时优先 local store
+- 会从当前运行目录推导 repo skills dir（`./skills` 或当前 `skills/` 目录）
+- 仅作为“安装来源”使用 `repo skills dir`；local store 是安装目标，不参与来源优先级选择
 
 当 `-i` 传入的是“路径”时：
 
 - 支持 `~`、`./relative/path`、包含 `/` 的路径
 - 该路径必须是目录；skill 名取该目录的最后一段名称
+
+当 `-i` 传入的是“Git 仓库 URL”时：
+
+- 若仓库内存在 `skills/`：提取 `skills/*` 作为多个 skill
+- 否则：将仓库根目录视作单个 skill（skill 名默认为仓库名）
 
 ### `list` 输出说明
 

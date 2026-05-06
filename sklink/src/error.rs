@@ -108,6 +108,15 @@ pub enum AppError {
         source: std::io::Error,
     },
 
+    #[error("git is not available; cannot fetch github sources")]
+    GitNotAvailable,
+
+    #[error("failed to clone github repo: {url}: {message}")]
+    GitCloneFailed { url: String, message: String },
+
+    #[error("output path already exists: {path}")]
+    OutputPathExists { path: PathBuf },
+
     #[error(transparent)]
     Io(#[from] std::io::Error),
 }

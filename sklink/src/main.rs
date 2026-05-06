@@ -1,5 +1,6 @@
 mod config;
 mod error;
+mod git_source;
 mod init;
 mod install;
 mod path_utils;
@@ -18,8 +19,8 @@ use crate::error::AppError;
 #[command(name = "sklink")]
 #[command(
     about = "Install skills into platform directories via local store and symlinks",
-    long_about = "Install skills (directories) into a local store and then link them into configured platform target directories.\n\nLocal store: ~/.config/sklink/skills\nConfig file: ~/.config/sklink/config.toml\n\nRules:\n- Skills are copied into the local store before linking\n- If a local store skill already exists: error unless --force is used\n- If link does not exist: create\n- If link exists and points to expected target: skip\n- Otherwise (file/dir or wrong target): error",
-    after_help = "Tip: when using cargo run, pass CLI args after `--`.\nExamples:\n  cargo run -- --help\n  cargo run -- init\n  cargo run -- list\n  cargo run -- list --installed\n  cargo run -- -p all\n  cargo run -- -i software-engineer -p kimi\n  cargo run -- --force -i software-engineer -p kimi",
+    long_about = "Manage skills via a local store and symlinks.\n\nLocal store: ~/.config/sklink/skills\nConfig file: ~/.config/sklink/config.toml\n\nModes:\n- Install to local store: -i/--install <SRC>...\n- Sync local store to platform targets: --async [-p/--platform <PLATFORM|all>]\n- Output skills to a project directory: -o/--output <SKILL>... [--dir <DIR>] [--export]\n\nRules:\n- Install copies skills into the local store\n- Sync links from target dirs to the local store\n- Output links (or copies with --export) from the local store into a directory\n- If link exists and points to expected target: skip\n- Otherwise (file/dir or wrong target): error",
+    after_help = "Tip: when using cargo run, pass CLI args after `--`.\nExamples:\n  cargo run -- --help\n  cargo run -- init\n  cargo run -- list\n  cargo run -- list --installed\n  cargo run -- -i ./skills/software-engineer\n  cargo run -- -i https://github.com/org/repo --async\n  cargo run -- --async -p all\n  cargo run -- -o software-engineer\n  cargo run -- -o software-engineer --dir .agent/skills\n  cargo run -- -o software-engineer --export",
     args_conflicts_with_subcommands = true,
     subcommand_precedence_over_arg = true
 )]
@@ -30,21 +31,53 @@ struct Cli {
     #[arg(
         short = 'i',
         long = "install",
-        value_name = "SKILL|PATH",
-        help = "Skill name or path to a skill directory (repeatable). Omit to install all discovered skills"
+        value_name = "SRC",
+        help = "Install source (skill name, local dir, or git url). Repeatable."
     )]
-    skills: Vec<String>,
+    install_sources: Vec<String>,
 
     #[arg(
         short = 'p',
         long = "platform",
         value_name = "PLATFORM|all",
-        help = "Target platform name or all"
+        help = "Limit --async to a specific platform or all",
+        requires = "async_sync"
     )]
     platform: Option<String>,
 
     #[arg(long, help = "Overwrite existing skill in local store")]
+    #[arg(requires = "install_sources", conflicts_with = "outputs")]
     force: bool,
+
+    #[arg(
+        long = "async",
+        help = "Sync local store skills into platform target directories"
+    )]
+    async_sync: bool,
+
+    #[arg(
+        short = 'o',
+        long = "output",
+        value_name = "SKILL",
+        help = "Output skill from local store into a directory (repeatable)",
+        conflicts_with_all = ["install_sources", "force", "async_sync", "platform"]
+    )]
+    outputs: Vec<String>,
+
+    #[arg(
+        long = "dir",
+        value_name = "DIR",
+        help = "Output directory for -o/--output (default: .agent/skills)",
+        requires = "outputs"
+    )]
+    output_dir: Option<String>,
+
+    #[arg(
+        long,
+        help = "Copy skills instead of creating symlinks (only for -o/--output)"
+    )]
+    #[arg(requires = "outputs")]
+    export: bool,
 }
 
 #[derive(clap::Subcommand, Debug)]
@@ -94,70 +127,178 @@ fn run(cli: Cli) -> Result<(), AppError> {
         };
     }
 
-    let config = config::load_default_config()?;
+    if cli.install_sources.is_empty() && cli.outputs.is_empty() && !cli.async_sync {
+        let mut cmd = Cli::command();
+        cmd.print_help().map_err(AppError::Io)?;
+        println!();
+        return Ok(());
+    }
+
     let store_dir = store::default_store_dir(&cwd)?;
-    std::fs::create_dir_all(&store_dir).map_err(|e| AppError::CreateDir {
-        dir: store_dir.clone(),
-        source: e,
-    })?;
-    let store_dir = std::fs::canonicalize(&store_dir).map_err(AppError::Io)?;
 
-    let repo_skills_dir = skills::detect_repo_skills_dir(&cwd).ok();
-
-    let source_skills = if cli.skills.is_empty() {
-        let dir = repo_skills_dir.clone().unwrap_or_else(|| store_dir.clone());
-        skills::discover_skills(&dir)?
-    } else {
-        resolve_requested_skills(
-            repo_skills_dir.as_deref(),
-            &store_dir,
+    if !cli.outputs.is_empty() {
+        std::fs::create_dir_all(&store_dir).map_err(|e| AppError::CreateDir {
+            dir: store_dir.clone(),
+            source: e,
+        })?;
+        let store_dir = std::fs::canonicalize(&store_dir).map_err(AppError::Io)?;
+        return output_from_store(
             &cwd,
-            &cli.skills,
-            cli.force,
-        )?
-    };
+            &store_dir,
+            &cli.outputs,
+            cli.output_dir.as_deref(),
+            cli.export,
+        );
+    }
 
-    let mut selected_skills = Vec::new();
-    let is_bulk_install = cli.skills.is_empty();
-    for source in source_skills {
-        let src = std::fs::canonicalize(&source.dir).map_err(AppError::Io)?;
-        let expected_store = store_dir.join(&source.name);
-        let src_is_store = src == expected_store;
-        let store_exists = expected_store.exists();
+    let mut staged = Vec::new();
+    if !cli.install_sources.is_empty() {
+        std::fs::create_dir_all(&store_dir).map_err(|e| AppError::CreateDir {
+            dir: store_dir.clone(),
+            source: e,
+        })?;
+        let store_dir = std::fs::canonicalize(&store_dir).map_err(AppError::Io)?;
+        staged = install_into_store(&cwd, &store_dir, &cli.install_sources, cli.force)?;
+        for skill in &staged {
+            println!("stored {} -> {}", skill.name, display_path(&skill.dir));
+        }
+    }
 
-        let dir = if src_is_store {
-            src
-        } else if is_bulk_install && store_exists && !cli.force {
-            expected_store
-        } else if !is_bulk_install && store_exists && !cli.force {
-            return Err(AppError::StoreSkillAlreadyExists {
-                skill: source.name,
-                path: expected_store,
-            });
+    if cli.async_sync {
+        std::fs::create_dir_all(&store_dir).map_err(|e| AppError::CreateDir {
+            dir: store_dir.clone(),
+            source: e,
+        })?;
+        let store_dir = std::fs::canonicalize(&store_dir).map_err(AppError::Io)?;
+        let config = config::load_default_config()?;
+        let _ = staged;
+        sync_store_to_platforms(&cwd, &store_dir, &config, cli.platform.as_deref())?;
+    }
+
+    Ok(())
+}
+
+fn list_available(cwd: &Path) -> Result<(), AppError> {
+    let store_dir = store::default_store_dir(cwd)?;
+
+    let skills_dir = skills::detect_repo_skills_dir(cwd).unwrap_or(store_dir);
+    let skills = skills::discover_skills(&skills_dir)?;
+    for skill in skills {
+        println!("{}", skill.name);
+    }
+    Ok(())
+}
+
+fn install_into_store(
+    cwd: &Path,
+    store_dir: &Path,
+    sources: &[String],
+    force: bool,
+) -> Result<Vec<skills::SkillDir>, AppError> {
+    let repo_skills_dir = skills::detect_repo_skills_dir(cwd).ok();
+    let mut seen = HashSet::new();
+    let mut out = Vec::new();
+
+    for raw in sources {
+        if git_source::looks_like_git_url(raw) {
+            let staged = git_source::stage_from_git_url(raw, store_dir, cwd, force)?;
+            for skill in staged {
+                if seen.insert(skill.name.clone()) {
+                    out.push(skill);
+                }
+            }
+            continue;
+        }
+
+        let (name, raw_dir) = if looks_like_path(raw) {
+            let dir = path_utils::resolve_path(raw, cwd)?;
+            let name = dir
+                .file_name()
+                .map(|s| s.to_string_lossy().to_string())
+                .ok_or_else(|| AppError::SkillNotFound {
+                    skill: raw.clone(),
+                    path: dir.clone(),
+                    source: std::io::Error::other("missing directory name"),
+                })?;
+            (name, dir)
         } else {
-            store::stage_skill_to_store(&store_dir, &source.name, &src, cli.force)?
+            let Some(repo_skills_dir) = repo_skills_dir.as_ref() else {
+                return Err(AppError::RepoSkillsDirInvalid {
+                    path: cwd.join("skills"),
+                    source: std::io::Error::new(
+                        std::io::ErrorKind::NotFound,
+                        "skills dir not found",
+                    ),
+                });
+            };
+            (raw.clone(), repo_skills_dir.join(raw))
         };
-        selected_skills.push(skills::SkillDir {
-            name: source.name,
-            dir,
+
+        if !seen.insert(name.clone()) {
+            continue;
+        }
+
+        validate_skill_dir(raw, &raw_dir)?;
+        let raw_dir = std::fs::canonicalize(&raw_dir).map_err(|e| AppError::SkillNotFound {
+            skill: raw.clone(),
+            path: raw_dir.clone(),
+            source: e,
+        })?;
+
+        let dir = store::stage_skill_to_store(store_dir, &name, &raw_dir, force)?;
+        out.push(skills::SkillDir {
+            name,
+            dir: std::fs::canonicalize(dir).map_err(AppError::Io)?,
         });
     }
 
-    let platform = cli.platform.unwrap_or_else(|| "all".to_string());
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(out)
+}
+
+fn looks_like_path(raw: &str) -> bool {
+    raw.contains('/') || raw.starts_with('.') || raw.starts_with('~')
+}
+
+fn validate_skill_dir(skill: &str, dir: &PathBuf) -> Result<(), AppError> {
+    let meta = std::fs::metadata(dir).map_err(|e| AppError::SkillNotFound {
+        skill: skill.to_string(),
+        path: dir.clone(),
+        source: e,
+    })?;
+    if !meta.is_dir() {
+        return Err(AppError::SkillNotFound {
+            skill: skill.to_string(),
+            path: dir.clone(),
+            source: std::io::Error::other("not a directory"),
+        });
+    }
+    Ok(())
+}
+
+fn sync_store_to_platforms(
+    cwd: &Path,
+    store_dir: &Path,
+    config: &config::Config,
+    platform: Option<&str>,
+) -> Result<(), AppError> {
+    let selected_skills = skills::discover_skills(store_dir)?;
+
+    let platform = platform.unwrap_or("all");
     let platform_names: Vec<String> = if platform == "all" {
         let mut names: Vec<String> = config.platforms.keys().cloned().collect();
         names.sort();
         names
     } else {
-        if !config.platforms.contains_key(&platform) {
+        if !config.platforms.contains_key(platform) {
             let mut names: Vec<String> = config.platforms.keys().cloned().collect();
             names.sort();
             return Err(AppError::PlatformNotFound {
-                platform,
+                platform: platform.to_string(),
                 available: names.join(", "),
             });
         }
-        vec![platform]
+        vec![platform.to_string()]
     };
 
     for platform_name in platform_names {
@@ -167,7 +308,7 @@ fn run(cli: Cli) -> Result<(), AppError> {
         };
 
         for target in &platform.targets {
-            let target_dir = path_utils::resolve_path(&target.dir, &cwd)?;
+            let target_dir = path_utils::resolve_path(&target.dir, cwd)?;
             let meta = match std::fs::metadata(&target_dir) {
                 Ok(m) => m,
                 Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
@@ -214,95 +355,52 @@ fn run(cli: Cli) -> Result<(), AppError> {
     Ok(())
 }
 
-fn list_available(cwd: &Path) -> Result<(), AppError> {
-    let store_dir = store::default_store_dir(cwd)?;
-
-    let skills_dir = skills::detect_repo_skills_dir(cwd).unwrap_or(store_dir);
-    let skills = skills::discover_skills(&skills_dir)?;
-    for skill in skills {
-        println!("{}", skill.name);
-    }
-    Ok(())
-}
-
-fn resolve_requested_skills(
-    repo_skills_dir: Option<&Path>,
-    store_dir: &Path,
+fn output_from_store(
     cwd: &Path,
-    requested: &[String],
-    prefer_repo: bool,
-) -> Result<Vec<skills::SkillDir>, AppError> {
+    store_dir: &Path,
+    outputs: &[String],
+    output_dir: Option<&str>,
+    export: bool,
+) -> Result<(), AppError> {
+    let output_dir = output_dir.unwrap_or(".agent/skills");
+    let output_dir = path_utils::resolve_path(output_dir, cwd)?;
+    std::fs::create_dir_all(&output_dir).map_err(|e| AppError::CreateDir {
+        dir: output_dir.clone(),
+        source: e,
+    })?;
+
     let mut seen = HashSet::new();
-    let mut out = Vec::new();
-
-    for raw in requested {
-        let (name, raw_dir) = if looks_like_path(raw) {
-            let dir = path_utils::resolve_path(raw, cwd)?;
-            let name = dir
-                .file_name()
-                .map(|s| s.to_string_lossy().to_string())
-                .ok_or_else(|| AppError::SkillNotFound {
-                    skill: raw.clone(),
-                    path: dir.clone(),
-                    source: std::io::Error::other("missing directory name"),
-                })?;
-            (name, dir)
-        } else {
-            let repo_candidate = repo_skills_dir.map(|d| d.join(raw));
-            if prefer_repo && repo_candidate.as_ref().is_some_and(|d| d.is_dir()) {
-                (raw.clone(), repo_candidate.unwrap())
-            } else {
-                let store_candidate = store_dir.join(raw);
-                if store_candidate.is_dir() {
-                    (raw.clone(), store_candidate)
-                } else if let Some(repo_candidate) = repo_candidate {
-                    (raw.clone(), repo_candidate)
-                } else {
-                    return Err(AppError::SkillNotFound {
-                        skill: raw.clone(),
-                        path: store_candidate,
-                        source: std::io::Error::new(
-                            std::io::ErrorKind::NotFound,
-                            "skill not found in local store and repo skills dir not found",
-                        ),
-                    });
-                }
-            }
-        };
-
+    for name in outputs {
         if !seen.insert(name.clone()) {
             continue;
         }
 
-        validate_skill_dir(raw, &raw_dir)?;
-        let dir = std::fs::canonicalize(&raw_dir).map_err(|e| AppError::SkillNotFound {
-            skill: raw.clone(),
-            path: raw_dir.clone(),
-            source: e,
-        })?;
-        out.push(skills::SkillDir { name, dir });
+        let store_skill = store_dir.join(name);
+        validate_skill_dir(name, &store_skill)?;
+        let dest = output_dir.join(name);
+
+        if export {
+            if dest.exists() {
+                return Err(AppError::OutputPathExists { path: dest });
+            }
+            store::copy_dir_recursive(&store_skill, &dest)?;
+            println!("exported {} -> {}", name, display_path(&dest));
+        } else {
+            match install::ensure_correct_symlink(&dest, &store_skill)? {
+                install::InstallOutcome::Created => {
+                    println!(
+                        "created {} -> {}",
+                        display_path(&dest),
+                        display_path(&store_skill)
+                    );
+                }
+                install::InstallOutcome::Skipped => {
+                    println!("skipped {}", display_path(&dest));
+                }
+            }
+        }
     }
 
-    Ok(out)
-}
-
-fn looks_like_path(raw: &str) -> bool {
-    raw.contains('/') || raw.starts_with('.') || raw.starts_with('~')
-}
-
-fn validate_skill_dir(skill: &str, dir: &PathBuf) -> Result<(), AppError> {
-    let meta = std::fs::metadata(dir).map_err(|e| AppError::SkillNotFound {
-        skill: skill.to_string(),
-        path: dir.clone(),
-        source: e,
-    })?;
-    if !meta.is_dir() {
-        return Err(AppError::SkillNotFound {
-            skill: skill.to_string(),
-            path: dir.clone(),
-            source: std::io::Error::other("not a directory"),
-        });
-    }
     Ok(())
 }
 
