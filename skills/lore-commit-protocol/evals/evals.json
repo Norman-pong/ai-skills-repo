@@ -1,0 +1,23 @@
+{
+  "skill_name": "lore-commit-protocol",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I just fixed a memory leak in our React dashboard. The useEffect in DashboardPanel.tsx was subscribing to WebSocket events without cleaning up on unmount, so after navigating between pages a few times the browser would hit 2GB+ memory. I added a cleanup function that calls unsubscribe() in the useEffect return. Can you write the commit message for this?",
+      "expected_output": "A Lore protocol commit message with intent line describing why (prevent memory leak), body explaining the context, and relevant trailers like Confidence, Scope-risk, Tested",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "I need to commit some changes. I added rate limiting to our /api/login endpoint — it now allows max 5 attempts per IP per minute. I used the express-rate-limit library. I considered using Redis-backed rate limiting so it'd work across multiple server instances, but decided against it because we're still on a single-server setup and Redis would add ops complexity. The change touches the auth middleware and adds the express-rate-limit dependency. Please help me write a good commit message.",
+      "expected_output": "A Lore protocol commit message with intent line about preventing brute force, body explaining single-server constraint, Rejected trailer for Redis approach, and relevant metadata trailers",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "提交代码：重构了认证中间件，把原来存在 localStorage 的 session token 改为 httpOnly cookie，因为安全团队的新合规要求不允许在前端存储敏感 token。我还考虑过用 sessionStorage 但同样不符合合规要求。改动涉及 auth-middleware.ts、login.ts、logout.ts 三个文件。这个改动比较核心，但我用单元测试和手工测试都跑过了登录/登出流程。帮我写个符合规范的 commit message。",
+      "expected_output": "A Lore protocol commit message in Chinese following the format, with intent line about compliance-driven security improvement, body explaining the policy constraint, Rejected trailer for sessionStorage alternative, and appropriate confidence/scope-risk/tested trailers",
+      "files": []
+    }
+  ]
+}
