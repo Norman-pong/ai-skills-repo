@@ -32,7 +32,6 @@ Rules:
 - If link exists and points to expected target: skip
 - Otherwise (file/dir or wrong target): error";
 
-
 const AFTER_HELP: &str = "Quick setup for shell completions:
   zsh:  mkdir -p ~/.zsh/completions && sklink completions zsh > ~/.zsh/completions/_sklink
   bash: sklink completions bash | sudo tee /etc/bash_completion.d/sklink
