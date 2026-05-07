@@ -59,8 +59,32 @@ sklink list
 # 查看已安装到哪里（读取 config.toml 中的 targets 并扫描目标目录）
 sklink list --installed
 
-# 生成补全脚本（以 zsh 为例）
+# 生成并安装补全脚本
+
+生成后需要放到 shell 的补全搜索路径中才能生效。
+
+**zsh：**
+```bash
 sklink completions zsh > _sklink
+mkdir -p ~/.zsh/completions
+mv _sklink ~/.zsh/completions/
+autoload -U compinit && compinit
+```
+（或系统级路径：`/usr/local/share/zsh/site-functions/`）
+
+**bash：**
+```bash
+# 系统级
+sklink completions bash | sudo tee /etc/bash_completion.d/sklink
+# 或用户级追加到 ~/.bash_completion
+sklink completions bash >> ~/.bash_completion
+```
+
+**fish：**
+```bash
+mkdir -p ~/.config/fish/completions
+sklink completions fish > ~/.config/fish/completions/sklink.fish
+```
 
 # 安装 skill 到本机技能仓库（local store）
 # - 在仓库根目录运行：可用 skill 名（从 ./skills/<skill> 解析）

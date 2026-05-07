@@ -15,15 +15,33 @@ use std::path::PathBuf;
 
 use crate::error::AppError;
 
+const LONG_ABOUT: &str = "Install skills via a local store and symlinks.
+
+Local store: ~/.config/sklink/skills
+Config file: ~/.config/sklink/config.toml
+
+Modes:
+- Install to local store: -i/--install <SRC>...
+- Sync local store to platform targets: --async [-p/--platform <PLATFORM|all>]
+- Output skills to a project directory: -o/--output <SKILL>... [--dir <DIR>] [--export]
+
+Rules:
+- Install copies skills into the local store
+- Sync links from target dirs to the local store
+- Output links (or copies with --export) from the local store into a directory
+- If link exists and points to expected target: skip
+- Otherwise (file/dir or wrong target): error";
+
+
+const AFTER_HELP: &str = "Quick setup for shell completions:
+  zsh:  mkdir -p ~/.zsh/completions && sklink completions zsh > ~/.zsh/completions/_sklink
+  bash: sklink completions bash | sudo tee /etc/bash_completion.d/sklink
+  fish: mkdir -p ~/.config/fish/completions && sklink completions fish > ~/.config/fish/completions/sklink.fish
+
+Tip: when using cargo run, pass CLI args after `--` (e.g. cargo run -- --help)";
+
 #[derive(Parser, Debug)]
-#[command(name = "sklink")]
-#[command(
-    about = "Install skills into platform directories via local store and symlinks",
-    long_about = "Manage skills via a local store and symlinks.\n\nLocal store: ~/.config/sklink/skills\nConfig file: ~/.config/sklink/config.toml\n\nModes:\n- Install to local store: -i/--install <SRC>...\n- Sync local store to platform targets: --async [-p/--platform <PLATFORM|all>]\n- Output skills to a project directory: -o/--output <SKILL>... [--dir <DIR>] [--export]\n\nRules:\n- Install copies skills into the local store\n- Sync links from target dirs to the local store\n- Output links (or copies with --export) from the local store into a directory\n- If link exists and points to expected target: skip\n- Otherwise (file/dir or wrong target): error",
-    after_help = "Tip: when using cargo run, pass CLI args after `--`.\nExamples:\n  cargo run -- --help\n  cargo run -- init\n  cargo run -- list\n  cargo run -- list --installed\n  cargo run -- -i ./skills/software-engineer\n  cargo run -- -i https://github.com/org/repo --async\n  cargo run -- --async -p all\n  cargo run -- -o software-engineer\n  cargo run -- -o software-engineer --dir .agent/skills\n  cargo run -- -o software-engineer --export",
-    args_conflicts_with_subcommands = true,
-    subcommand_precedence_over_arg = true
-)]
+#[command(name = "sklink", long_about = LONG_ABOUT, after_help = AFTER_HELP, args_conflicts_with_subcommands = true, subcommand_precedence_over_arg = true)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
