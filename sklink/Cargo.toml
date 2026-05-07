@@ -7,6 +7,10 @@ documentation = "https://docs.rs/sklink"
 license = "MIT"
 readme = "README.md"
 
+[lib]
+name = "sklink"
+path = "src/lib.rs"
+
 [[bin]]
 name = "sklink"
 path = "src/main.rs"

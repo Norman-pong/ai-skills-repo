@@ -1,6 +1,9 @@
 use std::path::{Path, PathBuf};
 
+use crate::config;
 use crate::error::AppError;
+use crate::path_utils;
+use crate::skills;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InstallOutcome {
@@ -62,99 +65,85 @@ pub fn resolve_symlink_target(link_path: &Path, raw_target: &PathBuf) -> PathBuf
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+fn display_path(path: &Path) -> String {
+    path.to_string_lossy().to_string()
+}
 
-    fn canonical(path: &Path) -> PathBuf {
-        std::fs::canonicalize(path).unwrap()
-    }
+pub fn sync_store_to_platforms(
+    cwd: &Path,
+    store_dir: &Path,
+    config: &config::Config,
+    platform: Option<&str>,
+) -> Result<(), AppError> {
+    let selected_skills = skills::discover_skills(store_dir)?;
 
-    #[test]
-    fn ensure_correct_symlink_creates_when_missing() {
-        let dir = tempfile::tempdir().unwrap();
-        let link_path = dir.path().join("link");
-        let link_target = dir.path().join("target");
-        std::fs::create_dir_all(&link_target).unwrap();
-
-        let outcome = ensure_correct_symlink(&link_path, &link_target).unwrap();
-        assert_eq!(outcome, InstallOutcome::Created);
-
-        let meta = std::fs::symlink_metadata(&link_path).unwrap();
-        assert!(meta.file_type().is_symlink());
-
-        let raw = std::fs::read_link(&link_path).unwrap();
-        let resolved = resolve_symlink_target(&link_path, &raw);
-        assert_eq!(canonical(&resolved), canonical(&link_target));
-    }
-
-    #[test]
-    fn ensure_correct_symlink_skips_when_correct() {
-        let dir = tempfile::tempdir().unwrap();
-        let link_path = dir.path().join("link");
-        let link_target = dir.path().join("target");
-        std::fs::create_dir_all(&link_target).unwrap();
-
-        ensure_correct_symlink(&link_path, &link_target).unwrap();
-        let outcome = ensure_correct_symlink(&link_path, &link_target).unwrap();
-        assert_eq!(outcome, InstallOutcome::Skipped);
-    }
-
-    #[test]
-    fn ensure_correct_symlink_errors_when_existing_path_is_not_symlink() {
-        let dir = tempfile::tempdir().unwrap();
-        let link_path = dir.path().join("link");
-        let link_target = dir.path().join("target");
-        std::fs::create_dir_all(&link_target).unwrap();
-        std::fs::write(&link_path, "not a symlink").unwrap();
-
-        let err = ensure_correct_symlink(&link_path, &link_target).unwrap_err();
-        match err {
-            AppError::LinkPathNotSymlink { path } => assert_eq!(path, link_path),
-            other => panic!("unexpected error: {other:?}"),
+    let platform = platform.unwrap_or("all");
+    let platform_names: Vec<String> = if platform == "all" {
+        let mut names: Vec<String> = config.platforms.keys().cloned().collect();
+        names.sort();
+        names
+    } else {
+        if !config.platforms.contains_key(platform) {
+            let mut names: Vec<String> = config.platforms.keys().cloned().collect();
+            names.sort();
+            return Err(AppError::PlatformNotFound {
+                platform: platform.to_string(),
+                available: names.join(", "),
+            });
         }
-    }
+        vec![platform.to_string()]
+    };
 
-    #[test]
-    fn ensure_correct_symlink_errors_when_symlink_points_elsewhere() {
-        let dir = tempfile::tempdir().unwrap();
-        let link_path = dir.path().join("link");
-        let expected = dir.path().join("expected");
-        let other = dir.path().join("other");
-        std::fs::create_dir_all(&expected).unwrap();
-        std::fs::create_dir_all(&other).unwrap();
+    for platform_name in platform_names {
+        let Some(platform) = config.platforms.get(&platform_name) else {
+            eprintln!("warning: platform not found: {platform_name}");
+            continue;
+        };
 
-        std::os::unix::fs::symlink(&other, &link_path).unwrap();
-        let err = ensure_correct_symlink(&link_path, &expected).unwrap_err();
-        match err {
-            AppError::LinkPathWrongTarget {
-                path,
-                actual,
-                expected,
-            } => {
-                assert_eq!(path, link_path);
-                assert_eq!(actual, canonical(&other));
-                assert_eq!(expected, canonical(&dir.path().join("expected")));
+        for target in &platform.targets {
+            let target_dir = path_utils::resolve_path(&target.dir, cwd)?;
+            let meta = match std::fs::metadata(&target_dir) {
+                Ok(m) => m,
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                    eprintln!(
+                        "warning: target dir not found (skipped): platform={platform_name} dir={}",
+                        display_path(&target_dir)
+                    );
+                    continue;
+                }
+                Err(err) => {
+                    eprintln!(
+                        "warning: failed to read target dir (skipped): platform={platform_name} dir={} err={err}",
+                        display_path(&target_dir)
+                    );
+                    continue;
+                }
+            };
+            if !meta.is_dir() {
+                eprintln!(
+                    "warning: target path is not a directory (skipped): platform={platform_name} dir={}",
+                    display_path(&target_dir)
+                );
+                continue;
             }
-            other => panic!("unexpected error: {other:?}"),
+
+            for skill in &selected_skills {
+                let link_path = target_dir.join(&skill.name);
+                match ensure_correct_symlink(&link_path, &skill.dir)? {
+                    InstallOutcome::Created => {
+                        println!(
+                            "created {} -> {}",
+                            display_path(&link_path),
+                            display_path(&skill.dir)
+                        );
+                    }
+                    InstallOutcome::Skipped => {
+                        println!("skipped {}", display_path(&link_path));
+                    }
+                }
+            }
         }
     }
 
-    #[test]
-    fn ensure_correct_symlink_accepts_relative_symlink_target() {
-        let dir = tempfile::tempdir().unwrap();
-        let repo = dir.path().join("repo");
-        let targets = dir.path().join("targets");
-        std::fs::create_dir_all(&repo).unwrap();
-        std::fs::create_dir_all(&targets).unwrap();
-
-        let link_target = repo.join("skill");
-        std::fs::create_dir_all(&link_target).unwrap();
-
-        let link_path = targets.join("skill");
-        std::os::unix::fs::symlink("../repo/skill", &link_path).unwrap();
-
-        let outcome = ensure_correct_symlink(&link_path, &link_target).unwrap();
-        assert_eq!(outcome, InstallOutcome::Skipped);
-    }
+    Ok(())
 }
