@@ -84,6 +84,47 @@ fn cli_output_export_copies_instead_of_symlink() {
 }
 
 #[test]
+fn cli_output_export_dereferences_symlinks_to_files() {
+    let home = setup_temp_home();
+    let project = tempfile::tempdir().unwrap();
+    let skill = "software-engineer";
+
+    let stored = store_skill_dir(home.path(), skill);
+    std::fs::create_dir_all(&stored).unwrap();
+    std::fs::write(stored.join("real.txt"), "real content").unwrap();
+    std::os::unix::fs::symlink(stored.join("real.txt"), stored.join("link.txt")).unwrap();
+
+    let out = Command::new(bin_path())
+        .env("HOME", home.path())
+        .current_dir(project.path())
+        .args(["-o", skill, "--export"])
+        .output()
+        .unwrap();
+
+    assert!(
+        out.status.success(),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let exported_link = project
+        .path()
+        .join(".agent/skills")
+        .join(skill)
+        .join("link.txt");
+    let meta = std::fs::symlink_metadata(&exported_link).unwrap();
+    assert!(
+        !meta.file_type().is_symlink(),
+        "exported symlink should be dereferenced to a regular file"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&exported_link).unwrap(),
+        "real content"
+    );
+}
+
+#[test]
 fn cli_output_symlink_fails_when_dest_is_regular_file() {
     let home = setup_temp_home();
     let project = tempfile::tempdir().unwrap();

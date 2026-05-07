@@ -46,7 +46,7 @@ pub fn stage_skill_to_store(
         })?;
     }
 
-    copy_dir_recursive(source_dir, &dest_dir)?;
+    copy_dir_recursive(source_dir, &dest_dir, false)?;
     Ok(dest_dir)
 }
 
@@ -59,7 +59,11 @@ fn store_backup_dir(store_dir: &Path, skill_name: &str) -> Result<PathBuf, AppEr
     Ok(parent.join("backups").join(skill_name).join(ts.to_string()))
 }
 
-pub(crate) fn copy_dir_recursive(from: &Path, to: &Path) -> Result<(), AppError> {
+pub(crate) fn copy_dir_recursive(
+    from: &Path,
+    to: &Path,
+    follow_symlinks: bool,
+) -> Result<(), AppError> {
     std::fs::create_dir(to).map_err(|e| AppError::StoreDirCreate {
         dir: to.to_path_buf(),
         source: e,
@@ -88,7 +92,7 @@ pub(crate) fn copy_dir_recursive(from: &Path, to: &Path) -> Result<(), AppError>
         let to_path = to.join(entry.file_name());
 
         if ty.is_dir() {
-            copy_dir_recursive(&from_path, &to_path)?;
+            copy_dir_recursive(&from_path, &to_path, follow_symlinks)?;
         } else if ty.is_file() {
             std::fs::copy(&from_path, &to_path).map_err(|e| AppError::StoreFileCopy {
                 from: from_path,
@@ -100,11 +104,34 @@ pub(crate) fn copy_dir_recursive(from: &Path, to: &Path) -> Result<(), AppError>
                 path: from_path.clone(),
                 source: e,
             })?;
-            std::os::unix::fs::symlink(&target, &to_path).map_err(|e| AppError::CreateSymlink {
-                path: to_path,
-                target,
-                source: e,
-            })?;
+            if follow_symlinks {
+                let resolved = if target.is_absolute() {
+                    target
+                } else {
+                    from_path
+                        .parent()
+                        .expect("symlink has a parent directory")
+                        .join(target)
+                };
+                let target_meta = std::fs::metadata(&resolved).map_err(AppError::Io)?;
+                if target_meta.is_dir() {
+                    copy_dir_recursive(&resolved, &to_path, follow_symlinks)?;
+                } else {
+                    std::fs::copy(&resolved, &to_path).map_err(|e| AppError::StoreFileCopy {
+                        from: resolved,
+                        to: to_path,
+                        source: e,
+                    })?;
+                }
+            } else {
+                std::os::unix::fs::symlink(&target, &to_path).map_err(|e| {
+                    AppError::CreateSymlink {
+                        path: to_path,
+                        target,
+                        source: e,
+                    }
+                })?;
+            }
         }
     }
 
@@ -218,7 +245,7 @@ pub fn output_from_store(
             if dest.exists() {
                 return Err(AppError::OutputPathExists { path: dest });
             }
-            copy_dir_recursive(&store_skill, &dest)?;
+            copy_dir_recursive(&store_skill, &dest, true)?;
             println!("exported {} -> {}", name, display_path(&dest));
         } else {
             match install::ensure_correct_symlink(&dest, &store_skill)? {
